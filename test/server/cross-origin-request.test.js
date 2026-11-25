@@ -176,4 +176,174 @@ describe("cross-origin request check", () => {
       expect(response.text).toEqual("Cross-Origin request blocked");
     });
   });
+
+  // @see https://github.com/webpack/webpack-dev-server/security/advisories/GHSA-79cf-xcqc-c78w
+  describe("the 'Cross-Origin-Resource-Policy' header", () => {
+    it("should be 'same-origin' for requests to the bundle without 'sec-fetch-*' headers", async () => {
+      await startServer({});
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should be 'same-origin' for requests to static files without 'sec-fetch-*' headers", async () => {
+      await startServer({});
+
+      const response = await request(server.app)
+        .get("/foo.txt")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should be 'same-origin' for requests with an IP address in the 'host' header without 'sec-fetch-*' headers", async () => {
+      await startServer({});
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `127.0.0.1:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should be 'same-origin' when the 'host' header is not allowed", async () => {
+      await startServer({ allowedHosts: ["my-test-host"] });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should not be set with the 'all' value of the 'allowedHosts' option", async () => {
+      await startServer({ allowedHosts: "all" });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toBeUndefined();
+    });
+
+    it("should not be set when the 'host' header is in the 'allowedHosts' option", async () => {
+      await startServer({ allowedHosts: ["localhost"] });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toBeUndefined();
+    });
+
+    it("should not be set with a wildcard 'Access-Control-Allow-Origin' header in the 'headers' object", async () => {
+      await startServer({
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["access-control-allow-origin"]).toEqual("*");
+      expect(response.headers["cross-origin-resource-policy"]).toBeUndefined();
+    });
+
+    it("should not be set with a lowercase wildcard 'access-control-allow-origin' header in the 'headers' object", async () => {
+      await startServer({
+        headers: { "access-control-allow-origin": " * " },
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toBeUndefined();
+    });
+
+    it("should not be set with a wildcard 'Access-Control-Allow-Origin' header in the 'headers' array", async () => {
+      await startServer({
+        headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["access-control-allow-origin"]).toEqual("*");
+      expect(response.headers["cross-origin-resource-policy"]).toBeUndefined();
+    });
+
+    it("should be 'same-origin' with a specific origin 'Access-Control-Allow-Origin' header in the 'headers' object", async () => {
+      await startServer({
+        headers: { "Access-Control-Allow-Origin": "http://foo.example.com" },
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should be 'same-origin' with a specific origin 'Access-Control-Allow-Origin' header in the 'headers' array", async () => {
+      await startServer({
+        headers: [
+          {
+            key: "Access-Control-Allow-Origin",
+            value: "http://foo.example.com",
+          },
+        ],
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+
+    it("should be 'same-origin' when the 'headers' option is a function", async () => {
+      await startServer({
+        headers: () => {
+          return { "Access-Control-Allow-Origin": "*" };
+        },
+      });
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.headers["cross-origin-resource-policy"]).toEqual(
+        "same-origin"
+      );
+    });
+  });
 });
