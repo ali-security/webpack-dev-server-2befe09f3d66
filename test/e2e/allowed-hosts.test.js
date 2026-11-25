@@ -315,6 +315,152 @@ describe("allowed hosts", () => {
       await server.stop();
     });
 
+    it(`should connect web socket client using "localhost" host to web socket server by default ("${webSocketServer}")`, async () => {
+      const devServerHost = "localhost";
+      const devServerPort = port1;
+      const proxyHost = devServerHost;
+      const proxyPort = port2;
+
+      const compiler = webpack(config);
+      const devServerOptions = {
+        client: {
+          webSocketURL: {
+            port: port2,
+          },
+        },
+        webSocketServer,
+        port: devServerPort,
+        host: devServerHost,
+      };
+      const server = new Server(devServerOptions, compiler);
+
+      await server.start();
+
+      function startProxy(callback) {
+        const app = express();
+
+        app.use(
+          "/",
+          createProxyMiddleware({
+            target: `http://${devServerHost}:${devServerPort}`,
+            ws: true,
+            changeOrigin: true,
+            logLevel: "warn",
+          })
+        );
+
+        return app.listen(proxyPort, proxyHost, callback);
+      }
+
+      const proxy = await new Promise((resolve) => {
+        const proxyCreated = startProxy(() => {
+          resolve(proxyCreated);
+        });
+      });
+
+      const { page, browser } = await runBrowser();
+
+      try {
+        const pageErrors = [];
+        const consoleMessages = [];
+
+        page
+          .on("console", (message) => {
+            consoleMessages.push(message);
+          })
+          .on("pageerror", (error) => {
+            pageErrors.push(error);
+          });
+
+        await page.goto(`http://${proxyHost}:${proxyPort}/`, {
+          waitUntil: "networkidle0",
+        });
+
+        expect(
+          consoleMessages.map((message) => message.text())
+        ).toMatchSnapshot("console messages");
+        expect(pageErrors).toMatchSnapshot("page errors");
+      } finally {
+        proxy.close();
+
+        await browser.close();
+        await server.stop();
+      }
+    });
+
+    it(`should connect web socket client using "127.0.0.1" host to web socket server by default ("${webSocketServer}")`, async () => {
+      const devServerHost = "127.0.0.1";
+      const devServerPort = port1;
+      const proxyHost = devServerHost;
+      const proxyPort = port2;
+
+      const compiler = webpack(config);
+      const devServerOptions = {
+        client: {
+          webSocketURL: {
+            port: port2,
+          },
+        },
+        webSocketServer,
+        port: devServerPort,
+        host: devServerHost,
+      };
+      const server = new Server(devServerOptions, compiler);
+
+      await server.start();
+
+      function startProxy(callback) {
+        const app = express();
+
+        app.use(
+          "/",
+          createProxyMiddleware({
+            target: `http://${devServerHost}:${devServerPort}`,
+            ws: true,
+            changeOrigin: true,
+            logLevel: "warn",
+          })
+        );
+
+        return app.listen(proxyPort, proxyHost, callback);
+      }
+
+      const proxy = await new Promise((resolve) => {
+        const proxyCreated = startProxy(() => {
+          resolve(proxyCreated);
+        });
+      });
+
+      const { page, browser } = await runBrowser();
+
+      try {
+        const pageErrors = [];
+        const consoleMessages = [];
+
+        page
+          .on("console", (message) => {
+            consoleMessages.push(message);
+          })
+          .on("pageerror", (error) => {
+            pageErrors.push(error);
+          });
+
+        await page.goto(`http://${proxyHost}:${proxyPort}/`, {
+          waitUntil: "networkidle0",
+        });
+
+        expect(
+          consoleMessages.map((message) => message.text())
+        ).toMatchSnapshot("console messages");
+        expect(pageErrors).toMatchSnapshot("page errors");
+      } finally {
+        proxy.close();
+
+        await browser.close();
+        await server.stop();
+      }
+    });
+
     it(`should connect web socket client using "127.0.0.1" host to web socket server with the "auto" value ("${webSocketServer}")`, async () => {
       const devServerHost = "127.0.0.1";
       const devServerPort = port1;
@@ -457,6 +603,81 @@ describe("allowed hosts", () => {
 
       await browser.close();
       await server.stop();
+    });
+
+    it(`should connect web socket client using "0.0.0.0" host to web socket server with the "auto" value ("${webSocketServer}")`, async () => {
+      const devServerHost = "0.0.0.0";
+      const IPv4 = Server.internalIPSync("v4");
+      const devServerPort = port1;
+      const proxyHost = IPv4;
+      const proxyPort = port2;
+
+      const compiler = webpack(config);
+      const devServerOptions = {
+        client: {
+          webSocketURL: {
+            port: port2,
+          },
+        },
+        webSocketServer,
+        port: devServerPort,
+        host: devServerHost,
+        allowedHosts: "auto",
+      };
+      const server = new Server(devServerOptions, compiler);
+
+      await server.start();
+
+      function startProxy(callback) {
+        const app = express();
+
+        app.use(
+          "/",
+          createProxyMiddleware({
+            target: `http://${IPv4}:${devServerPort}`,
+            ws: true,
+            changeOrigin: true,
+            logLevel: "warn",
+          })
+        );
+
+        return app.listen(proxyPort, proxyHost, callback);
+      }
+
+      const proxy = await new Promise((resolve) => {
+        const proxyCreated = startProxy(() => {
+          resolve(proxyCreated);
+        });
+      });
+
+      const { page, browser } = await runBrowser();
+
+      try {
+        const pageErrors = [];
+        const consoleMessages = [];
+
+        page
+          .on("console", (message) => {
+            consoleMessages.push(message);
+          })
+          .on("pageerror", (error) => {
+            pageErrors.push(error);
+          });
+
+        await page.goto(`http://${proxyHost}:${proxyPort}/`, {
+          waitUntil: "networkidle0",
+        });
+
+        expect(
+          consoleMessages.map((message) => message.text())
+        ).toMatchSnapshot("console messages");
+        expect(pageErrors).toMatchSnapshot("page errors");
+      } finally {
+        proxy.close();
+
+        await browser.close();
+        await server.stop();
+      }
     });
 
     it(`should connect web socket client using "file:" protocol to web socket server with the "auto" value ("${webSocketServer}")`, async () => {
@@ -1068,6 +1289,84 @@ describe("allowed hosts", () => {
       await server.stop();
     });
 
+    it(`should connect web socket client using origin header containing an IP address with the custom hostname value ("${webSocketServer}")`, async () => {
+      const devServerHost = "127.0.0.1";
+      const devServerPort = port1;
+      const proxyHost = devServerHost;
+      const proxyPort = port2;
+
+      const compiler = webpack(config);
+      const devServerOptions = {
+        client: {
+          webSocketURL: {
+            port: port2,
+          },
+        },
+        webSocketServer,
+        port: devServerPort,
+        host: devServerHost,
+        allowedHosts: ["192.168.1.1"],
+      };
+      const server = new Server(devServerOptions, compiler);
+
+      await server.start();
+
+      function startProxy(callback) {
+        const app = express();
+
+        app.use(
+          "/",
+          createProxyMiddleware({
+            // Emulation
+            onProxyReqWs: (proxyReq) => {
+              proxyReq.setHeader("origin", "http://192.168.1.1/");
+            },
+            target: `http://${devServerHost}:${devServerPort}`,
+            ws: true,
+            changeOrigin: true,
+            logLevel: "warn",
+          })
+        );
+
+        return app.listen(proxyPort, proxyHost, callback);
+      }
+
+      const proxy = await new Promise((resolve) => {
+        const proxyCreated = startProxy(() => {
+          resolve(proxyCreated);
+        });
+      });
+
+      const { page, browser } = await runBrowser();
+
+      try {
+        const pageErrors = [];
+        const consoleMessages = [];
+
+        page
+          .on("console", (message) => {
+            consoleMessages.push(message);
+          })
+          .on("pageerror", (error) => {
+            pageErrors.push(error);
+          });
+
+        await page.goto(`http://${proxyHost}:${proxyPort}/`, {
+          waitUntil: "networkidle0",
+        });
+
+        expect(
+          consoleMessages.map((message) => message.text())
+        ).toMatchSnapshot("(work) console messages");
+        expect(pageErrors).toMatchSnapshot("(work) page errors");
+      } finally {
+        proxy.close();
+
+        await browser.close();
+        await server.stop();
+      }
+    });
+
     it(`should disconnect web client using localhost to web socket server with the "auto" value ("${webSocketServer}")`, async () => {
       const devServerHost = "127.0.0.1";
       const devServerPort = port1;
@@ -1146,6 +1445,84 @@ describe("allowed hosts", () => {
 
       await browser.close();
       await server.stop();
+    });
+
+    it(`should disconnect web client using origin header containing an IP address with the "auto" value ("${webSocketServer}")`, async () => {
+      const devServerHost = "127.0.0.1";
+      const devServerPort = port1;
+      const proxyHost = devServerHost;
+      const proxyPort = port2;
+
+      const compiler = webpack(config);
+      const devServerOptions = {
+        client: {
+          webSocketURL: {
+            port: port2,
+          },
+        },
+        webSocketServer,
+        port: devServerPort,
+        host: devServerHost,
+        allowedHosts: ["192.168.1.1"],
+      };
+      const server = new Server(devServerOptions, compiler);
+
+      await server.start();
+
+      function startProxy(callback) {
+        const app = express();
+
+        app.use(
+          "/",
+          createProxyMiddleware({
+            // Emulation
+            onProxyReqWs: (proxyReq) => {
+              proxyReq.setHeader("origin", "http://192.168.0.1/");
+            },
+            target: `http://${devServerHost}:${devServerPort}`,
+            ws: true,
+            changeOrigin: true,
+            logLevel: "warn",
+          })
+        );
+
+        return app.listen(proxyPort, proxyHost, callback);
+      }
+
+      const proxy = await new Promise((resolve) => {
+        const proxyCreated = startProxy(() => {
+          resolve(proxyCreated);
+        });
+      });
+
+      const { page, browser } = await runBrowser();
+
+      try {
+        const pageErrors = [];
+        const consoleMessages = [];
+
+        page
+          .on("console", (message) => {
+            consoleMessages.push(message);
+          })
+          .on("pageerror", (error) => {
+            pageErrors.push(error);
+          });
+
+        await page.goto(`http://${proxyHost}:${proxyPort}/`, {
+          waitUntil: "networkidle0",
+        });
+
+        expect(
+          consoleMessages.map((message) => message.text())
+        ).toMatchSnapshot("(work) console messages");
+        expect(pageErrors).toMatchSnapshot("(work) page errors");
+      } finally {
+        proxy.close();
+
+        await browser.close();
+        await server.stop();
+      }
     });
   }
 
