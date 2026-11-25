@@ -346,4 +346,96 @@ describe("cross-origin request check", () => {
       );
     });
   });
+
+  describe("the '/webpack-dev-server/invalidate' route", () => {
+    const blockedCombinations = [
+      ["cors", "cross-site"],
+      ["no-cors", "cross-site"],
+      ["navigate", "cross-site"],
+      ["cors", "same-site"],
+      ["no-cors", "same-site"],
+    ];
+
+    for (const [mode, site] of blockedCombinations) {
+      it(`should return 403 for "${mode}" mode and "${site}" site requests`, async () => {
+        await startServer({});
+
+        const invalidateSpy = jest.spyOn(server, "invalidate");
+
+        const response = await request(server.app)
+          .get("/webpack-dev-server/invalidate")
+          .set("Host", `localhost:${port}`)
+          .set("Sec-Fetch-Mode", mode)
+          .set("Sec-Fetch-Site", site);
+
+        expect(response.status).toEqual(403);
+        expect(response.text).toEqual("Cross-Origin request blocked");
+        expect(invalidateSpy).not.toHaveBeenCalled();
+      });
+    }
+
+    it("should return 403 for requests with a cross-origin 'origin' header without 'sec-fetch-*' headers", async () => {
+      await startServer({});
+
+      const invalidateSpy = jest.spyOn(server, "invalidate");
+
+      const response = await request(server.app)
+        .get("/webpack-dev-server/invalidate")
+        .set("Host", `localhost:${port}`)
+        .set("Origin", "http://evil.example");
+
+      expect(response.status).toEqual(403);
+      expect(response.text).toEqual("Cross-Origin request blocked");
+      expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    const allowedCombinations = [
+      ["cors", "same-origin"],
+      ["navigate", "none"],
+    ];
+
+    for (const [mode, site] of allowedCombinations) {
+      it(`should return 200 for "${mode}" mode and "${site}" site requests`, async () => {
+        await startServer({});
+
+        const invalidateSpy = jest.spyOn(server, "invalidate");
+
+        const response = await request(server.app)
+          .get("/webpack-dev-server/invalidate")
+          .set("Host", `localhost:${port}`)
+          .set("Sec-Fetch-Mode", mode)
+          .set("Sec-Fetch-Site", site);
+
+        expect(response.status).toEqual(200);
+        expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      });
+    }
+
+    it("should return 200 for requests with a same-origin 'origin' header without 'sec-fetch-*' headers", async () => {
+      await startServer({});
+
+      const invalidateSpy = jest.spyOn(server, "invalidate");
+
+      const response = await request(server.app)
+        .get("/webpack-dev-server/invalidate")
+        .set("Host", `localhost:${port}`)
+        .set("Origin", `http://localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return 200 for requests without 'sec-fetch-*' and 'origin' headers", async () => {
+      await startServer({});
+
+      const invalidateSpy = jest.spyOn(server, "invalidate");
+
+      const response = await request(server.app)
+        .get("/webpack-dev-server/invalidate")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });
