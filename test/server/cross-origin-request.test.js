@@ -1,8 +1,10 @@
 "use strict";
 
 const path = require("path");
+const url = require("url");
 const request = require("supertest");
 const webpack = require("webpack");
+const WebSocket = require("ws");
 const Server = require("../../lib/Server");
 const config = require("../fixtures/client-config/webpack.config");
 const port = require("../ports-map")["cross-origin-request-server"];
@@ -436,6 +438,191 @@ describe("cross-origin request check", () => {
 
       expect(response.status).toEqual(200);
       expect(invalidateSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("malformed 'host' and 'origin' headers", () => {
+    const malformedHost = "[::1";
+    const malformedOrigin = "http://[::1/";
+
+    let parseSpy;
+
+    function throwOnMalformedHeaders() {
+      const originalParse = url.parse;
+
+      parseSpy = jest
+        .spyOn(url, "parse")
+        .mockImplementation((input, ...args) => {
+          if (input === `//${malformedHost}` || input === malformedOrigin) {
+            throw new TypeError("Invalid URL");
+          }
+
+          return originalParse(input, ...args);
+        });
+    }
+
+    function connectWebSocket(headers) {
+      return new Promise((resolve) => {
+        const messages = [];
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers });
+
+        ws.on("message", (data) => {
+          messages.push(JSON.parse(data));
+        });
+        ws.on("close", () => resolve(messages));
+        ws.on("error", () => resolve(messages));
+      });
+    }
+
+    afterEach(() => {
+      if (parseSpy) {
+        parseSpy.mockRestore();
+        parseSpy = null;
+      }
+    });
+
+    it("should return false from 'checkHeader' when the 'host' header cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      expect(server.checkHeader({ host: malformedHost }, "host", true)).toBe(
+        false
+      );
+      expect(parseSpy).toHaveBeenCalledWith(`//${malformedHost}`, false, true);
+    });
+
+    it("should return false from 'checkHeader' when the 'origin' header cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      expect(
+        server.checkHeader({ origin: malformedOrigin }, "origin", false)
+      ).toBe(false);
+      expect(parseSpy).toHaveBeenCalledWith(malformedOrigin, false, true);
+    });
+
+    it("should return false from 'isSameOrigin' when the 'origin' header cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      expect(
+        server.isSameOrigin({
+          origin: malformedOrigin,
+          host: `localhost:${port}`,
+        })
+      ).toBe(false);
+      expect(parseSpy).toHaveBeenCalledWith(malformedOrigin, false, true);
+    });
+
+    it("should return false from 'isSameOrigin' when the 'host' header cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      expect(
+        server.isSameOrigin({
+          origin: `http://localhost:${port}`,
+          host: malformedHost,
+        })
+      ).toBe(false);
+      expect(parseSpy).toHaveBeenCalledWith(`//${malformedHost}`, false, true);
+    });
+
+    it("should return false from 'checkHeader' for a 'host' header with a soft hyphen", async () => {
+      await startServer({});
+
+      expect(server.checkHeader({ host: "­" }, "host", true)).toBe(false);
+      expect(
+        server.checkHeader({ origin: "http://­" }, "origin", false)
+      ).toBe(false);
+      expect(
+        server.isSameOrigin({
+          origin: "http://­",
+          host: `localhost:${port}`,
+        })
+      ).toBe(false);
+    });
+
+    it("should return 'Invalid Host header' for requests with a 'host' header that cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", malformedHost);
+
+      expect(response.status).toEqual(200);
+      expect(response.text).toEqual("Invalid Host header");
+      expect(parseSpy).toHaveBeenCalledWith(`//${malformedHost}`, false, true);
+    });
+
+    it("should return 403 from '/webpack-dev-server/invalidate' for an 'origin' header that cannot be parsed", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      const invalidateSpy = jest.spyOn(server, "invalidate");
+
+      const response = await request(server.app)
+        .get("/webpack-dev-server/invalidate")
+        .set("Host", `localhost:${port}`)
+        .set("Origin", malformedOrigin);
+
+      expect(response.status).toEqual(403);
+      expect(response.text).toEqual("Cross-Origin request blocked");
+      expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    it("should reject a web socket connection with an 'origin' header that cannot be parsed without crashing", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      const messages = await connectWebSocket({
+        host: `localhost:${port}`,
+        origin: malformedOrigin,
+      });
+
+      expect(messages).toContainEqual({
+        type: "error",
+        data: "Invalid Host/Origin header",
+      });
+      expect(parseSpy).toHaveBeenCalledWith(malformedOrigin, false, true);
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.text).toContain("Hey.");
+    });
+
+    it("should reject a web socket connection with a 'host' header that cannot be parsed without crashing", async () => {
+      await startServer({});
+
+      throwOnMalformedHeaders();
+
+      const messages = await connectWebSocket({
+        host: malformedHost,
+        origin: `http://localhost:${port}`,
+      });
+
+      expect(messages).toContainEqual({
+        type: "error",
+        data: "Invalid Host/Origin header",
+      });
+      expect(parseSpy).toHaveBeenCalledWith(`//${malformedHost}`, false, true);
+
+      const response = await request(server.app)
+        .get("/main.js")
+        .set("Host", `localhost:${port}`);
+
+      expect(response.status).toEqual(200);
+      expect(response.text).toContain("Hey.");
     });
   });
 });
