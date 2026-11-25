@@ -592,7 +592,9 @@ describe("proxy option", () => {
         });
 
         beforeEach((done) => {
-          ws = new WebSocket(`ws://localhost:${port3}/proxy3/socket`);
+          ws = new WebSocket(`ws://localhost:${port3}/proxy3/socket`, {
+            origin: `http://localhost:${port3}`,
+          });
 
           ws.on("message", (message) => {
             responseMessage = message.toString();
@@ -839,7 +841,9 @@ describe("proxy option", () => {
     const setup = async (devServerOptions) => {
       backendUpgradeCount = 0;
 
-      backend = http.createServer();
+      backend = http.createServer((req, res) => {
+        res.end("backend response");
+      });
       closeAllBackendConnections = trackConnections(backend);
       backendWss = new WebSocketServer({ server: backend });
       backendWss.on("connection", () => {
@@ -936,6 +940,7 @@ describe("proxy option", () => {
     ];
 
     for (const { type, hmrPath, nonHmrPath } of serverTypes) {
+      // eslint-disable-next-line no-loop-func
       describe(`with webSocketServerType: ${type}`, () => {
         beforeAll(() => setup({ webSocketServer: type }));
 
@@ -948,6 +953,19 @@ describe("proxy option", () => {
           expect(forwarded).toBe(false);
         });
 
+        it("does not forward the HMR upgrade after an HTTP proxy request", async () => {
+          await request(server.server).get("/api/hello").expect(200);
+
+          const { opened } = await probe(hmrPath);
+
+          await new Promise((resolve) => {
+            setTimeout(resolve, 100);
+          });
+
+          expect(opened).toBe(true);
+          expect(backendUpgradeCount).toBe(0);
+        });
+
         it("forwards a non-HMR upgrade to the user proxy", async () => {
           const { forwarded } = await probe(nonHmrPath);
 
@@ -956,13 +974,7 @@ describe("proxy option", () => {
       });
 
       describe(`with webSocketServerType: ${type} after a proxied HTTP request`, () => {
-        beforeAll(async () => {
-          await setup({ webSocketServer: type });
-
-          backend.on("request", (req, res) => {
-            res.end("from backend");
-          });
-        });
+        beforeAll(() => setup({ webSocketServer: type }));
 
         afterAll(teardown);
 
@@ -983,7 +995,7 @@ describe("proxy option", () => {
               .on("error", reject);
           });
 
-          expect(body).toBe("from backend");
+          expect(body).toBe("backend response");
 
           const { opened, forwarded } = await probe(hmrPath);
 

@@ -82,6 +82,7 @@ const listOfTests = {
   "cross-origin-request": 2,
   "cross-origin-request-server": 1,
   "proxy-option-hmr": 1,
+  "proxy-web-socket-origin": 2,
 };
 
 let startPort = 8089;
